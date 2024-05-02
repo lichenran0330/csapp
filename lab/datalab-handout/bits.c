@@ -189,7 +189,11 @@ int allOddBits(int x) {
    sum<<=8;
    sum |= tx;
    return !((x&sum)^sum);
-   //ok
+   /*
+   int sum = (0xaa << 8) | 0xaa;
+   sum = (sum << 16) | sum;
+   return ..;
+   */
 }
 /* 
  * negate - return -x 
@@ -231,6 +235,12 @@ int conditional(int x, int y, int z) {
   x = !(!x);
   return y+((c<<(x<<4))<<(x<<4));
   //ok
+  /*
+  int e = !!x;
+  int flag = ~e + 1;
+  x ? flag = 0xffffffff : 0
+  return (flag & y) | (~flag & z);
+  */
 }
 /*  
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -245,7 +255,6 @@ int isLessOrEqual(int x, int y) {
   return !(!((f&(!(t>>31)))|((!f)&(x>>31))));
   //ok
 }
-//4
 /* 
  * logicalNeg - implement the ! operator, using all of 
  *              the legal operators except !
@@ -255,7 +264,11 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
+  // return ((x|((~x)+1))>>31)^1;
+  // 上面的话右移并不是变成了0x00000001而是0xffffffff
+  return ((x | (~x + 1)) >> 31) + 1;
 }
+
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
  *  Examples: howManyBits(12) = 5
@@ -269,7 +282,20 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-  return 0;
+  int A = x >> 31;
+  x = (A & ~x) | (~A & x);
+  int b16 = !!(x >> 16) << 4;
+  x >>= b16;
+  int b8 = !!(x >> 8) << 3;
+  x >>= b8;
+  int b4 = !!(x >> 4) << 2;
+  x >>= b4;
+  int b2 = !!(x >> 2) << 1;
+  x >>= b2;
+  int b1 = !!(x >> 1);
+  x >>= b1;
+  int b0 = x;
+  return b0 + b1 + b2 + b4 + b8 + b16 + 1;
 }
 //float
 /* 
@@ -284,10 +310,12 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned floatScale2(unsigned uf) {
-  unsigned e = (uf>>23)&0xff;
-  if(!(e^0xff))return uf;
-  e=e+1;
-  return ((uf>>31)<<31)|(e<<23)|(e&0x7fffff);
+  unsigned s = uf & (1 << 31);
+  unsigned exp = uf >> 23 & 0xff;
+  unsigned frac = uf & 0x7fffff;
+  if(exp == 0xff) return uf;
+  if(exp != 0) return s | (exp + 1) << 23 | frac;
+  return s | (frac << 1);  
 }
 /* 
  * floatFloat2Int - Return bit-level equivalent of expression (int) f
@@ -302,15 +330,18 @@ unsigned floatScale2(unsigned uf) {
  *   Rating: 4
  */
 int floatFloat2Int(unsigned uf) {
-  // unsigned e = uf>>23&0xff;
-  // if(e^0xff)return 0x80000000u;
-  // e = e + (~0x80) + 2;
-  // if(e>>31&1)return 0;
-  // int t = 31 + (~e) +1;
-  // if(t>>31&1)return 0x80000000u;
-  // unsigned ans = (uf&0x80000000u) | (((uf&0x7fffff)|0x800000)<<e);
-  // return ans;
-  return 0;
+  unsigned s = uf >> 31 & 1;
+  unsigned exp = uf >> 23 & 0xff;
+  int frac = (uf & 0x7fffff) | 0x800000;
+  if(s)frac |= 0xff000000u;
+  unsigned max = 0x80000000u;
+  int t = exp - 0x80 + 1;
+  if(t < 0)return 0;
+  if(t > 31)return max;
+  if(t == 31 && s == 0)return max;
+  if(t == 31)return frac << 8;
+  if(t >= 23)return frac << (t - 23);
+  return frac >> (23 - t);
 }
 /* 
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x
@@ -326,6 +357,9 @@ int floatFloat2Int(unsigned uf) {
  *   Rating: 4
  */
 unsigned floatPower2(int x) {
-
-  return 2;
+  int t = x + 0x80 - 1;
+  if(t >= 0xff)return 0x7f800000u;
+  if(t < -23)return 0;
+  if(t > 0)return t << 23;
+  return 1 << (22 + t);
 }
